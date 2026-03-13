@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RSI 即時計算器</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --border2: #2a2a3e;
+    --text: #e8e8f0;
+    --muted: #6b6b88;
+    --accent: #7c6aff;
+    --green: #00e5a0;
+    --red: #ff4d6d;
+    --amber: #fbbf24;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 1.25rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: rgba(10,10,15,0.95);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+  }
+  .logo { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.02em; }
+  .logo span { color: var(--accent); }
+  .update-info { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); text-align: right; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+  .top-bar h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; flex: 1; }
+
+  .refresh-btn {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 0.55rem 1.2rem;
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .period-tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+  .period-tab {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    padding: 4px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    transition: all 0.15s;
+  }
+  .period-tab.active { background: var(--accent); color: #fff; }
+
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .stock-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.15s;
+    cursor: pointer;
+  }
+  .stock-card:hover { border-color: var(--border2); transform: translateY(-1px); }
+  .stock-card.active { border-color: var(--accent); }
+  .stock-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--card-color, var(--accent));
+  }
+
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+  .ticker { font-size: 1rem; font-weight: 800; letter-spacing: -0.01em; }
+  .exchange-badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--border);
+    color: var(--muted);
+  }
+
+  .rsi-display { display: flex; align-items: baseline; gap: 8px; margin-bottom: 0.5rem; }
+  .rsi-value { font-family: var(--mono); font-size: 2.2rem; font-weight: 500; line-height: 1; }
+  .rsi-label { font-size: 0.7rem; color: var(--muted); font-family: var(--mono); }
+
+  .rsi-bar-bg { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 0.5rem; }
+  .rsi-bar { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+  .rsi-markers { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.6rem; color: var(--muted); margin-bottom: 0.75rem; }
+
+  .signal-row { display: flex; justify-content: space-between; align-items: center; }
+  .signal-badge { font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+  .sig-overbought { background: rgba(255,77,109,0.15); color: var(--red); }
+  .sig-oversold   { background: rgba(0,229,160,0.15); color: var(--green); }
+  .sig-neutral    { background: var(--border); color: var(--muted); }
+
+  .price-info { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); text-align: right; }
+  .price-info .price { color: var(--text); font-size: 0.88rem; }
+  .chg-up { color: var(--green); }
+  .chg-dn { color: var(--red); }
+
+  .loading-card { display: flex; align-items: center; justify-content: center; min-height: 160px; }
+  .spinner { width: 24px; height: 24px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  .error-card { color: var(--red); font-family: var(--mono); font-size: 0.75rem; padding: 1rem 0; }
+
+  .chart-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .chart-panel h3 { font-size: 0.85rem; font-weight: 700; margin-bottom: 1.25rem; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+  .chart-wrap { position: relative; width: 100%; height: 180px; margin-bottom: 1.25rem; }
+  .chart-wrap-sm { position: relative; width: 100%; height: 120px; }
+
+  .auto-refresh-bar {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
+    margin-bottom: 1.5rem;
+  }
+  .auto-refresh-bar select {
+    background: var(--surface); border: 1px solid var(--border2);
+    color: var(--text); border-radius: 4px; padding: 3px 8px;
+    font-family: var(--mono); font-size: 0.72rem; cursor: pointer;
+  }
+  .countdown { color: var(--accent); min-width: 30px; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 1rem 2rem;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">RSI <span>即時</span>計算器</div>
+  <div class="update-info">
+    <div><span class="dot"></span>Yahoo Finance · 即時報價</div>
+    <div id="last-update">--</div>
+  </div>
+</header>
+
+<main>
+  <div class="top-bar">
+    <h1>投資組合 RSI 監控</h1>
+    <div class="period-tabs">
+      <button class="period-tab" onclick="setPeriod(9,this)">RSI 9</button>
+      <button class="period-tab active" onclick="setPeriod(14,this)">RSI 14</button>
+      <button class="period-tab" onclick="setPeriod(21,this)">RSI 21</button>
+    </div>
+    <button class="refresh-btn" id="refresh-btn" onclick="refreshAll()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      重新整理
+    </button>
+  </div>
+
+  <div class="auto-refresh-bar">
+    自動更新：
+    <select id="auto-interval" onchange="setAutoRefresh()">
+      <option value="0">關閉</option>
+      <option value="60">每 1 分鐘</option>
+      <option value="300" selected>每 5 分鐘</option>
+      <option value="600">每 10 分鐘</option>
+    </select>
+    <span id="countdown" class="countdown"></span>
+  </div>
+
+  <div class="cards-grid" id="cards-grid"></div>
+
+  <div class="chart-panel" id="chart-panel" style="display:none">
+    <h3 id="chart-title">-- 走勢圖</h3>
+    <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+    <div class="chart-wrap-sm"><canvas id="rsiChart"></canvas></div>
+  </div>
+</main>
+
+<footer>資料來源：Yahoo Finance · 延遲約15分鐘 · 僅供參考，不構成投資建議</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const STOCKS = [
+  { exchange: 'TPE', ticker: '0050',   symbol: '0050.TW',   color: '#7c6aff' },
+  { exchange: 'TPE', ticker: '00631L', symbol: '00631L.TW', color: '#ff4d6d' },
+  { exchange: 'LON', ticker: 'XNAS',   symbol: 'XNAS.L',    color: '#00e5a0' },
+  { exchange: 'LON', ticker: 'SPYL',   symbol: 'SPYL.L',    color: '#fbbf24' },
+  { exchange: 'LON', ticker: 'VWRA',   symbol: 'VWRA.L',    color: '#60a5fa' },
+];
+
+const PROXIES = [
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://proxy.cors.sh/${url}`,
+];
+
+let RSI_PERIOD = 14;
+let activeSymbol = null;
+let pChart = null, rChart = null;
+let stockData = {};
+let autoTimer = null;
+let countdownTimer = null;
+let countdownSec = 0;
+
+function calcRSI(closes, period) {
+  const rsi = new Array(closes.length).fill(null);
+  if (closes.length <= period) return rsi;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i-1];
+    if (d > 0) gains += d; else losses -= d;
+  }
+  let ag = gains/period, al = losses/period;
+  rsi[period] = al === 0 ? 100 : 100 - 100/(1+ag/al);
+  for (let i = period+1; i < closes.length; i++) {
+    const d = closes[i] - closes[i-1];
+    ag = (ag*(period-1) + Math.max(d,0)) / period;
+    al = (al*(period-1) + Math.max(-d,0)) / period;
+    rsi[i] = al === 0 ? 100 : 100 - 100/(1+ag/al);
+  }
+  return rsi;
+}
+
+async function fetchWithProxy(yahooUrl) {
+  for (const makeProxy of PROXIES) {
+    try {
+      const res = await fetch(makeProxy(yahooUrl), { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.chart?.result?.[0]) return json;
+      }
+    } catch(e) { continue; }
+  }
+  throw new Error('所有來源均無法連線');
+}
+
+async function fetchStock(stock) {
+  const range = RSI_PERIOD <= 9 ? '3mo' : RSI_PERIOD <= 14 ? '6mo' : '1y';
+  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${stock.symbol}?interval=1d&range=${range}`;
+  const json = await fetchWithProxy(yahooUrl);
+  const r = json.chart.result[0];
+  const ts = r.timestamp;
+  const closes = r.indicators.quote[0].close;
+  const dates = [], cleanCloses = [];
+  for (let i = 0; i < ts.length; i++) {
+    if (closes[i] != null) {
+      const d = new Date(ts[i]*1000);
+      dates.push(`${d.getMonth()+1}/${d.getDate()}`);
+      cleanCloses.push(+closes[i].toFixed(4));
+    }
+  }
+  const rsiVals = calcRSI(cleanCloses, RSI_PERIOD);
+  const latest = cleanCloses[cleanCloses.length-1];
+  const prev = cleanCloses[cleanCloses.length-2];
+  const latestRSI = rsiVals[rsiVals.length-1];
+  const chgPct = (latest - prev) / prev * 100;
+  return { dates, closes: cleanCloses, rsiVals, latest, latestRSI, chgPct };
+}
+
+function getBarColor(rsi, stock) {
+  if (rsi >= 70) return '#ff4d6d';
+  if (rsi <= 30) return '#00e5a0';
+  if (rsi >= 55) return '#fbbf24';
+  if (rsi <= 45) return '#60a5fa';
+  return stock.color;
+}
+
+function renderCard(stock, data, error) {
+  const card = document.getElementById('card-' + stock.ticker);
+  if (!card) return;
+  card.style.setProperty('--card-color', stock.color);
+  if (error) {
+    card.innerHTML = `
+      <div class="card-top">
+        <div class="ticker">${stock.ticker}</div>
+        <div class="exchange-badge">${stock.exchange}</div>
+      </div>
+      <div class="error-card">無法載入：${error}</div>`;
+    return;
+  }
+  const { latest, latestRSI, chgPct } = data;
+  const rsiPct = Math.min(Math.max(latestRSI, 0), 100);
+  const barColor = getBarColor(latestRSI, stock);
+  let sigClass = 'sig-neutral', sigText = '中性';
+  if (latestRSI >= 70) { sigClass = 'sig-overbought'; sigText = '超買'; }
+  else if (latestRSI <= 30) { sigClass = 'sig-oversold'; sigText = '超賣'; }
+  const chgClass = chgPct >= 0 ? 'chg-up' : 'chg-dn';
+  const chgSign = chgPct >= 0 ? '+' : '';
+  card.innerHTML = `
+    <div class="card-top">
+      <div class="ticker">${stock.ticker}</div>
+      <div class="exchange-badge">${stock.exchange}</div>
+    </div>
+    <div class="rsi-display">
+      <div class="rsi-value" style="color:${barColor}">${latestRSI.toFixed(1)}</div>
+      <div class="rsi-label">RSI(${RSI_PERIOD})</div>
+    </div>
+    <div class="rsi-bar-bg"><div class="rsi-bar" style="width:${rsiPct}%;background:${barColor}"></div></div>
+    <div class="rsi-markers"><span>0</span><span>30</span><span>50</span><span>70</span><span>100</span></div>
+    <div class="signal-row">
+      <span class="signal-badge ${sigClass}">${sigText}</span>
+      <div class="price-info">
+        <div class="price">${latest.toFixed(2)}</div>
+        <div class="${chgClass}">${chgSign}${chgPct.toFixed(2)}%</div>
+      </div>
+    </div>`;
+}
+
+function showChart(stock) {
+  const data = stockData[stock.ticker];
+  if (!data) return;
+  activeSymbol = stock.ticker;
+  document.querySelectorAll('.stock-card').forEach(c => c.classList.remove('active'));
+  document.getElementById('card-' + stock.ticker).classList.add('active');
+  const panel = document.getElementById('chart-panel');
+  panel.style.display = 'block';
+  document.getElementById('chart-title').textContent = `${stock.ticker} · ${stock.exchange} 走勢`;
+  const skip = Math.max(1, Math.floor(data.dates.length / 12));
+  const labels = data.dates.map((d,i) => i % skip === 0 ? d : '');
+  if (pChart) pChart.destroy();
+  if (rChart) rChart.destroy();
+  pChart = new Chart(document.getElementById('priceChart'), {
+    type: 'line',
+    data: { labels, datasets: [{ data: data.closes, borderColor: stock.color, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#6b6b88', font: { size: 10 } }, grid: { color: '#1e1e2e' } },
+        y: { ticks: { color: '#6b6b88', font: { size: 10 } }, grid: { color: '#1e1e2e' } }
+      }
+    }
+  });
+  rChart = new Chart(document.getElementById('rsiChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { data: data.rsiVals, borderColor: stock.color, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2 },
+        { data: new Array(labels.length).fill(70), borderColor: '#ff4d6d', borderWidth: 1, borderDash: [4,4], pointRadius: 0, fill: false },
+        { data: new Array(labels.length).fill(30), borderColor: '#00e5a0', borderWidth: 1, borderDash: [4,4], pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#6b6b88', font: { size: 10 } }, grid: { color: '#1e1e2e' } },
+        y: { min: 0, max: 100, ticks: { color: '#6b6b88', font: { size: 10 }, stepSize: 25 }, grid: { color: '#1e1e2e' } }
+      }
+    }
+  });
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function refreshAll() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  await Promise.all(STOCKS.map(async stock => {
+    try {
+      const data = await fetchStock(stock);
+      stockData[stock.ticker] = data;
+      renderCard(stock, data, null);
+    } catch(e) {
+      renderCard(stock, null, e.message);
+    }
+  }));
+  btn.classList.remove('spinning');
+  document.getElementById('last-update').textContent = '更新：' + new Date().toLocaleTimeString('zh-TW');
+  if (activeSymbol) {
+    const s = STOCKS.find(s => s.ticker === activeSymbol);
+    if (s) showChart(s);
+  }
+}
+
+function setAutoRefresh() {
+  clearInterval(autoTimer);
+  clearInterval(countdownTimer);
+  const sec = parseInt(document.getElementById('auto-interval').value);
+  if (sec === 0) { document.getElementById('countdown').textContent = ''; return; }
+  countdownSec = sec;
+  countdownTimer = setInterval(() => {
+    countdownSec--;
+    document.getElementById('countdown').textContent = countdownSec + 's';
+    if (countdownSec <= 0) countdownSec = sec;
+  }, 1000);
+  autoTimer = setInterval(() => { refreshAll(); countdownSec = sec; }, sec * 1000);
+}
+
+function setPeriod(p, el) {
+  RSI_PERIOD = p;
+  document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  refreshAll();
+}
+
+function init() {
+  const grid = document.getElementById('cards-grid');
+  STOCKS.forEach(stock => {
+    const card = document.createElement('div');
+    card.className = 'stock-card';
+    card.id = 'card-' + stock.ticker;
+    card.style.setProperty('--card-color', stock.color);
+    card.innerHTML = `<div class="loading-card"><div class="spinner"></div></div>`;
+    card.onclick = () => { if (stockData[stock.ticker]) showChart(stock); };
+    grid.appendChild(card);
+  });
+  refreshAll();
+  setAutoRefresh();
+}
+
+init();
+</script>
+</body>
+</html>
